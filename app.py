@@ -356,6 +356,7 @@ def update_selected_row(active_cell, table_data, derived_virtual_indices):
             if selected_row_index is not None:
                 selected_data = table_data.iloc[selected_row_index]
 
+                selected_p_code = selected_data['p_code']
                 selected_checkin = selected_data['checkin']
                 selected_checkout = selected_data['checkout']
                 selected_tafb = selected_data['tafb']
@@ -363,7 +364,7 @@ def update_selected_row(active_cell, table_data, derived_virtual_indices):
                 selected_block = selected_data['block_sum']
                 selected_soft = selected_data['softtime']
 
-                selected_atts = f"Check-In: {selected_checkin} \u2014 Check-Out: {selected_checkout}\nTAFB: {selected_tafb}\nCredit: {selected_credit} - Block: {selected_block} = Soft: {selected_soft}"
+                selected_atts = f"Code: {selected_p_code}\nCheck-In: {selected_checkin} \u2014 Check-Out: {selected_checkout}\nTAFB: {selected_tafb}\nCredit: {selected_credit} - Block: {selected_block} = Soft: {selected_soft}"
 
                 selected_table = selected_data['flight_data']
                 selected_df = pd.DataFrame(eval(selected_table), columns=flight_columns)
