@@ -64,3 +64,5 @@ This project was first put together in a couple days in May 2023. Captain Jim Pr
 ## License
 
 This project is licensed under the [MIT License](https://github.com/ryan-j-pratt/pairings-parser/blob/e78d2ed42db588364a3d217577d76127e3706b58/LICENSE).
+
+The plane favicon is from [Twemoji](https://twemoji.twitter.com/) and is licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).

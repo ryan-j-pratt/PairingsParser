@@ -24,8 +24,8 @@ def format_timedelta_alt(td):
 
 # Create the Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.LITERA])
+app.title = 'Parser'
 server = app.server
-
 
 
 import dash_bootstrap_components as dbc
