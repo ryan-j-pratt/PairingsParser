@@ -64,5 +64,3 @@ This project was first put together in a couple days in May 2023. Captain Jim Pr
 ## License
 
 This project is licensed under the [MIT License](https://github.com/ryan-j-pratt/pairings-parser/blob/e78d2ed42db588364a3d217577d76127e3706b58/LICENSE).
-
-Thank you for using the Pairings Parser web app. We hope it simplifies your pairing analysis and bidding process. Happy exploring!
