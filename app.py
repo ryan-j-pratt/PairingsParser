@@ -1,61 +1,15 @@
-from dash import dash, html, dcc, dash_table
-from dash.dependencies import Input, Output, State
+from dash import dash, html, dcc, dash_table, Input, Output, State
 import dash_bootstrap_components as dbc
 import re
 import pandas as pd
 from datetime import datetime, timedelta
 import base64
-
-#execfile("confidential.py")
+import json
 
 table_columns = ['p_code', 'n_days', 'checkin', 'checkout', 'credit_sum', 'block_sum', 'softtime','tafb','flight_data']
-table_data = pd.DataFrame(columns=table_columns)
+#table_data = pd.DataFrame(columns=table_columns)
 
 flight_columns = ['Day', 'Flt', 'Dep', 'Local_Dep', 'Arr', 'Local_Arr', 'Turn', 'Eqp', 'Block']
-
-file_contents = '''----------------------------------------------------------------------------------------------------
-        E2001  Check-In 05:14   Check-Out 13:50            1-Day                     SEP 2022
-                                                                                    +---------------------+
-        Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
-        1     2295  EWR  06:14   MIA  09:18   001:07   32M   003:04                 |=====================|
-        1     2594  MIA  10:25   EWR  13:35            32M   003:10                 |         -- -- -- 03 |
-                                                                        008:36      |04 -- -- -- -- -- -- |
-                                                            ----------------------   |-- -- -- -- -- -- -- |
-        Credit: 006:14                                        006:14     008:36      |-- -- -- -- -- -- -- |
-        TAFB: 008:36                                                                 |-- -- -- -- -- --    |
-        Crew Comp:  1 CA, 1 FO                                                       +---------------------+
-        ----------------------------------------------------------------------------------------------------
-        E2002  Check-In 05:59   Check-Out 14:09            1-Day                     SEP 2022
-                                                                                    +---------------------+
-        Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
-        1     1711  EWR  06:59   RSW  09:57   001:03   32M   002:58                 |=====================|
-        1     1712  RSW  11:00   EWR  13:54            32M   002:54                 |         -- -- -- -- |
-                                                                        008:10      |-- -- -- 07 08 09 -- |
-                                                            ----------------------   |11 12 -- 14 -- 16 -- |
-        Credit: 005:52                                        005:52     008:10      |18 19 20 21 22 23 -- |
-        TAFB: 008:10                                                                 |25 26 27 -- 29 30    |
-        Crew Comp:  1 CA, 1 FO                                                       +---------------------+
-        ----------------------------------------------------------------------------------------------------
-        E2087  Check-In 14:21   Check-Out 07:05            5-Day                     SEP 2022
-                                                                                    +---------------------+
-        Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
-        1     1493  EWR  15:21   STI  19:09   001:00   32M   003:48                 |=====================|
-        1     0194  STI  20:09   EWR  23:59            32M   003:50                 |         -- -- -- -- |
-        EWR   014:15  Renaissance EWR Airport       908-436-4600      009:53      |-- -- 06 -- -- -- -- |
-        2     1493  EWR  15:14   STI  18:59   001:00   32M   003:45                 |-- -- -- -- -- -- -- |
-        2     0194  STI  19:59   EWR  23:42            32M   003:43                 |-- -- -- -- -- -- -- |
-        EWR   020:18  The Westin Jersey City Ne     201-626-2900      009:28      |-- -- -- -- -- --    |
-        3     1003  EWR  21:00   SDQ  00:48            32M   003:48                 +---------------------+
-        SDQ   025:02  Sheraton Santo Domingo        809 221 6666      004:48
-        5     1004  SDQ  02:50   EWR  06:50            32M   004:00    
-                                                                        005:00
-                                                            ----------------------
-        Credit: 025:21                                        022:54     029:09
-        TAFB: 088:44
-        Crew Comp:  1 CA, 1 FO
-        ----------------------------------------------------------------------------------------------------
-        END
-        '''
 
 def format_timedelta(td):
     total_hours = td.total_seconds() // 3600
@@ -69,94 +23,7 @@ def format_timedelta_alt(td):
     minutes = (td.seconds // 60) % 60
     return f"{days} days, {hours:02d}:{minutes:02d}"
 
-pairings = file_contents.split('----------------------------------------------------------------------------------------------------\n')
-del pairings[0]
-del pairings[-1]
-#pairings_list = list()
-
-for pairing in pairings:
-    
-    flight_data = re.findall(r'(\d)?\s+(\d+)\s+(\w{3})\s{2}(\d{2}:\d{2})\s{3}(\w{3})\s{2}(\d{2}:\d{2})\s*(\d{3}:\d{2})?\s*(\w{3})\s{3}(\d{3}:\d{2})', pairing) # raw data is a simple dataset stored in confidential.py
-    flight_table = pd.DataFrame(flight_data, columns=flight_columns)
-
-    # Extract other variables of interest
-
-    ## From the top line pull the pairing code and the number of days of the pairing
-
-    p_code = re.findall(r'[A-Z]\d+', pairing)
-    p_code = p_code[0]
-
-    n_days = re.findall(r'(\d+)-Day', pairing)
-    n_days = int(n_days[0])
-
-    ## Near the bottom pull both the total credit and sum of the block times and use it to calculate the soft time. Plus record time away from base
-
-    credit_sum = re.findall(r'Credit:\s(\d{3}:\d{2})', pairing)
-    credit_sum = credit_sum[0]
-    hours, minutes = map(int, credit_sum.split(':'))
-    credit_sum = timedelta(hours=hours, minutes=minutes)
-
-    block_sum = re.findall(r'\w\s{40}(\d{3}:\d{2})', pairing)
-    block_sum = block_sum[0]
-    hours, minutes = map(int, block_sum.split(':'))
-    block_sum = timedelta(hours=hours, minutes=minutes)
-
-    softtime = credit_sum - block_sum
-
-    tafb = re.findall(r'TAFB:\s(\d{3}:\d{2})', pairing)
-    tafb = tafb[0]
-    hours, minutes = map(int, tafb.split(':'))
-    tafb = timedelta(hours=hours, minutes=minutes)
-
-    credit_sum = format_timedelta(credit_sum)
-    block_sum = format_timedelta(block_sum)
-    softtime = format_timedelta(softtime)
-    tafb = format_timedelta_alt(tafb)
-
-    ## Here, we concern ourselves with dates. We want the dates in the calendar on the right to match with the month and year above the calendar.
-
-    my = re.findall(r'[A-Z]{3}\s\d{4}', pairing)
-    my = datetime.strptime(my[0],"%b %Y")
-
-    d = list()
-    d_lines = re.findall(r'\|.*\|', pairing)
-    for week in d_lines:
-        d_strs = re.findall(r'\d+', week)
-        for d_str in d_strs:
-            d.append(d_str)
-
-    d = [int(num) for num in d]
-    mdy = [my + timedelta(days=item-1) for item in d]
-
-    ## Further, we want check in and checkout times to be associated with these dates.
-
-    checkin = re.findall(r'Check-In\s(\d{2}:\d{2})', pairing)
-    checkin = datetime.strptime(checkin[0],"%H:%M")
-    checkins = list()
-    for date in mdy:
-        checkin_datetime = datetime.combine(date.date(), checkin.time())
-        checkins.append(checkin_datetime)
-
-    checkout = re.findall(r'Check-Out\s(\d{2}:\d{2})', pairing)
-    checkout = datetime.strptime(checkout[0],"%H:%M")
-    checkouts = list()
-    for date in mdy:
-        date = date + timedelta(days = n_days - 1)
-        checkout_datetime = datetime.combine(date.date(), checkout.time())
-        checkouts.append(checkout_datetime)
-
-    ## Now all that remains is to make our table_data with all pairings. But because we want to filter by dates, we actually make an observation for each date a pairing is offered as well.
-
-    checkinouts = []
-    for item1, item2 in zip(checkins, checkouts):
-        checkinouts.append((item1, item2))
-    
-    for checkinout in checkinouts:
-        checkin, checkout = checkinout
-        obs = pd.DataFrame([[p_code, n_days, checkin, checkout, credit_sum, block_sum, softtime, tafb, flight_data]], columns = table_columns)
-        table_data = pd.concat([table_data, obs], ignore_index=True)
-
-table_data['flight_data'] = table_data['flight_data'].astype(str)
+#exec(open("predata.py").read())
 
 # Create the Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.LITERA])
@@ -173,7 +40,7 @@ app.layout = dbc.Container(
             [
                 dbc.Col(
                     [
-                        html.H2("Header"),
+                        html.H1("Title"),
                         html.P("Instructions"),
                         dcc.Store(id='selected_row_store'),
                         dcc.DatePickerRange(
@@ -191,16 +58,6 @@ app.layout = dbc.Container(
                                     'Drag and Drop or ',
                                     html.A('Select Files')
                                 ]),
-                                style={
-                                    'width': '100%',
-                                    'height': '60px',
-                                    'lineHeight': '60px',
-                                    'borderWidth': '1px',
-                                    'borderStyle': 'dashed',
-                                    'borderRadius': '5px',
-                                    'textAlign': 'center',
-                                    'margin': '10px'
-                                },
                                 multiple=False  # Set to True if you want to allow multiple file uploads
                             ),
                             html.Div(id='output-data-upload')
@@ -210,7 +67,7 @@ app.layout = dbc.Container(
                 ),
                 dbc.Col(
                     [
-                        html.H2("Title"),
+                        html.H2("Header"),
                     ],
                     className='col-md-4'
                 ),
@@ -221,14 +78,10 @@ app.layout = dbc.Container(
             [
                 dbc.Col(
                     [
-                        dash_table.DataTable(
-                            id='datatable',
-                            columns=[{"name": col, "id": col} for col in table_data.columns[[0] + list(range(2, 5))]],
-                            data=table_data.to_dict('records'),
-                            sort_action='native',
-                            sort_mode='multi',
-                            #className='table table-striped'
-                        ),
+                        html.Div(
+                            id='output-data-table'
+                        )
+                        #dcc.Store(id='data-store'),
                     ],
                     className='col-md-8'
                 ),
@@ -240,7 +93,6 @@ app.layout = dbc.Container(
                             ],
                             id='selected_row_table'
                         ),
-                        # Other information here
                     ],
                     className='col-md-4'
                 ),
@@ -264,7 +116,7 @@ app.layout = dbc.Container(
                     [
                         html.Div(
                             [
-                                html.H3("About Information"),
+                                html.H3("Other Information"),
                             ],
                             className='about-section'
                         ),
@@ -277,9 +129,11 @@ app.layout = dbc.Container(
     ],
 )
 
-@app.callback(Output('output-data-upload', 'children'),
-              Input('upload-data', 'contents'),
-              State('upload-data', 'filename'))
+@app.callback(
+    [Output('output-data-upload', 'children'), Output('output-data-table', 'children')],
+    [Input('upload-data', 'contents')],
+    [State('upload-data', 'filename')]
+)
 def process_uploaded_file(contents, filename):
     if contents is not None:
         # Read the file contents
@@ -290,204 +144,146 @@ def process_uploaded_file(contents, filename):
         file_contents = decoded_content.replace("\n", "")
     else:
         # Set a default value if no file is uploaded
-        file_contents = '''----------------------------------------------------------------------------------------------------
-        E2001  Check-In 05:14   Check-Out 13:50            1-Day                     SEP 2022
-                                                                                    +---------------------+
-        Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
-        1     2295  EWR  06:14   MIA  09:18   001:07   32M   003:04                 |=====================|
-        1     2594  MIA  10:25   EWR  13:35            32M   003:10                 |         -- -- -- 03 |
-                                                                        008:36      |04 -- -- -- -- -- -- |
-                                                            ----------------------   |-- -- -- -- -- -- -- |
-        Credit: 006:14                                        006:14     008:36      |-- -- -- -- -- -- -- |
-        TAFB: 008:36                                                                 |-- -- -- -- -- --    |
-        Crew Comp:  1 CA, 1 FO                                                       +---------------------+
-        ----------------------------------------------------------------------------------------------------
-        E2087  Check-In 14:21   Check-Out 07:05            5-Day                     SEP 2022
-                                                                                    +---------------------+
-        Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
-        1     1493  EWR  15:21   STI  19:09   001:00   32M   003:48                 |=====================|
-        1     0194  STI  20:09   EWR  23:59            32M   003:50                 |         -- -- -- -- |
-        EWR   014:15  Renaissance EWR Airport       908-436-4600      009:53      |-- -- 06 -- -- -- -- |
-        2     1493  EWR  15:14   STI  18:59   001:00   32M   003:45                 |-- -- -- -- -- -- -- |
-        2     0194  STI  19:59   EWR  23:42            32M   003:43                 |-- -- -- -- -- -- -- |
-        EWR   020:18  The Westin Jersey City Ne     201-626-2900      009:28      |-- -- -- -- -- --    |
-        3     1003  EWR  21:00   SDQ  00:48            32M   003:48                 +---------------------+
-        SDQ   025:02  Sheraton Santo Domingo        809 221 6666      004:48
-        5     1004  SDQ  02:50   EWR  06:50            32M   004:00    
-                                                                        005:00
-                                                            ----------------------
-        Credit: 025:21                                        022:54     029:09
-        TAFB: 088:44
-        Crew Comp:  1 CA, 1 FO
-        ----------------------------------------------------------------------------------------------------
-        END
-        '''
+        file_contents = '''
+            ----------------------------------------------------------------------------------------------------
+            Z2071  Check-In 09:22   Check-Out 13:08            4-Day                     OCT 2022
+                                                                                        +---------------------+
+            Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
+            1     2176  EWR  07:12   HOU  11:14   001:00   32M   004:14                 |=====================|
+            1     1149  HOU  12:14   EWR  16:19            32M   004:05                 |         -- -- -- -- |
+            EWR   009:43  Renaissance EWR Airport       908-437-4600      008:33      |-- -- -- -- -- -- 14 |
+            2     1831  EWR  09:21   DFW  12:20   001:00   32M   002:59                 |13 -- -- -- -- -- 19 |
+            2     2086  DFW  13:20   EWR  17:13            32M   003:53                 |-- 22 23 -- -- 26 -- |
+            EWR   008:07  Renaissance EWR Airport       908-437-4600      006:51      |-- -- 33 -- -- --    |
+            3     1863  EWR  10:01   MCO  12:53            32M   002:52                 +---------------------+
+            MCO   023:56  Courtyard Orlando Downtown     407-996-1000      003:52
+            4     1894  MCO  11:20   EWR  15:13            32M   003:53    
+                                                                            004:53
+                                                                ----------------------
+            Credit: 027:46                                        023:19     031:12
+            TAFB: 083:28
+            Crew Comp:  1 CA, 1 FO
+            ----------------------------------------------------------------------------------------------------
+            END
+            '''
 
 
-        pairings = file_contents.split('----------------------------------------------------------------------------------------------------\n')
-        del pairings[0]
-        del pairings[-1]
+    pairings = file_contents.split('----------------------------------------------------------------------------------------------------')
+    del pairings[0]
+    del pairings[-1]
 
-        for pairing in pairings:
-            
-            flight_data = re.findall(r'(\d)?\s+(\d+)\s+(\w{3})\s{2}(\d{2}:\d{2})\s{3}(\w{3})\s{2}(\d{2}:\d{2})\s*(\d{3}:\d{2})?\s*(\w{3})\s{3}(\d{3}:\d{2})', pairing) # raw data is a simple dataset stored in confidential.py
-            flight_table = pd.DataFrame(flight_data, columns=flight_columns)
+    table_data = pd.DataFrame(columns=table_columns)
 
-            # Extract other variables of interest
+    for pairing in pairings:
+        #global table_data
 
-            ## From the top line pull the pairing code and the number of days of the pairing
+        flight_data = []
+        obs = pd.DataFrame(columns=table_columns)
+        flight_table = pd.DataFrame(columns=flight_columns)
+        p_code = ""
+        n_days = 0
+        credit_sum = timedelta()
+        block_sum = timedelta()
+        softtime = timedelta()
+        tafb = timedelta()
+        my = datetime.now()  # Or an appropriate default value
+        d = []
+        checkins = []
+        checkouts = []   
+        
+        flight_data = re.findall(r'(\d)?\s+(\d+)\s+(\w{3})\s{2}(\d{2}:\d{2})\s{3}(\w{3})\s{2}(\d{2}:\d{2})\s*(\d{3}:\d{2})?\s*(\w{3})\s{3}(\d{3}:\d{2})', pairing) # raw data is a simple dataset stored in confidential.py
+        flight_table = pd.DataFrame(flight_data, columns=flight_columns)
 
-            p_code = re.findall(r'[A-Z]\d+', pairing)
-            p_code = p_code[0]
+        # Extract other variables of interest
 
-            n_days = re.findall(r'(\d+)-Day', pairing)
-            n_days = int(n_days[0])
+        ## From the top line pull the pairing code and the number of days of the pairing
 
-            ## Near the bottom pull both the total credit and sum of the block times and use it to calculate the soft time. Plus record time away from base
+        p_code = re.findall(r'[A-Z]\d+', pairing)
+        p_code = p_code[0]
 
-            credit_sum = re.findall(r'Credit:\s(\d{3}:\d{2})', pairing)
-            credit_sum = credit_sum[0]
-            hours, minutes = map(int, credit_sum.split(':'))
-            credit_sum = timedelta(hours=hours, minutes=minutes)
+        n_days = re.findall(r'(\d+)-Day', pairing)
+        n_days = int(n_days[0])
 
-            block_sum = re.findall(r'\w\s{40}(\d{3}:\d{2})', pairing)
-            block_sum = block_sum[0]
-            hours, minutes = map(int, block_sum.split(':'))
-            block_sum = timedelta(hours=hours, minutes=minutes)
+        ## Near the bottom pull both the total credit and sum of the block times and use it to calculate the soft time. Plus record time away from base
 
-            softtime = credit_sum - block_sum
+        credit_sum = re.findall(r'Credit:\s(\d{3}:\d{2})', pairing)
+        credit_sum = credit_sum[0]
+        hours, minutes = map(int, credit_sum.split(':'))
+        credit_sum = timedelta(hours=hours, minutes=minutes)
 
-            tafb = re.findall(r'TAFB:\s(\d{3}:\d{2})', pairing)
-            tafb = tafb[0]
-            hours, minutes = map(int, tafb.split(':'))
-            tafb = timedelta(hours=hours, minutes=minutes)
+        block_sum = re.findall(r'\w\s{40}(\d{3}:\d{2})', pairing)
+        block_sum = block_sum[0]
+        hours, minutes = map(int, block_sum.split(':'))
+        block_sum = timedelta(hours=hours, minutes=minutes)
 
-            credit_sum = format_timedelta(credit_sum)
-            block_sum = format_timedelta(block_sum)
-            softtime = format_timedelta(softtime)
-            tafb = format_timedelta_alt(tafb)
+        softtime = credit_sum - block_sum
 
-            ## Here, we concern ourselves with dates. We want the dates in the calendar on the right to match with the month and year above the calendar.
+        tafb = re.findall(r'TAFB:\s(\d{3}:\d{2})', pairing)
+        tafb = tafb[0]
+        hours, minutes = map(int, tafb.split(':'))
+        tafb = timedelta(hours=hours, minutes=minutes)
 
-            my = re.findall(r'[A-Z]{3}\s\d{4}', pairing)
-            my = datetime.strptime(my[0],"%b %Y")
+        credit_sum = format_timedelta(credit_sum)
+        block_sum = format_timedelta(block_sum)
+        softtime = format_timedelta(softtime)
+        tafb = format_timedelta_alt(tafb)
 
-            d = list()
-            d_lines = re.findall(r'\|.*\|', pairing)
-            for week in d_lines:
-                d_strs = re.findall(r'\d+', week)
-                for d_str in d_strs:
-                    d.append(d_str)
+        ## Here, we concern ourselves with dates. We want the dates in the calendar on the right to match with the month and year above the calendar.
 
-            d = [int(num) for num in d]
-            mdy = [my + timedelta(days=item-1) for item in d]
+        my = re.findall(r'[A-Z]{3}\s\d{4}', pairing)
+        my = datetime.strptime(my[0],"%b %Y")
 
-            ## Further, we want check in and checkout times to be associated with these dates.
+        d = list()
+        d_list = re.findall(r'\|(\d{2})\s|\s(\d{2})\s', pairing)
+        print(d_list)
 
-            checkin = re.findall(r'Check-In\s(\d{2}:\d{2})', pairing)
-            checkin = datetime.strptime(checkin[0],"%H:%M")
-            checkins = list()
-            for date in mdy:
-                checkin_datetime = datetime.combine(date.date(), checkin.time())
-                checkins.append(checkin_datetime)
+        d = [int(num) for tup in d_list for num in tup if num]
+        print(d)
+        mdy = [my + timedelta(days=item-1) for item in d]
 
-            checkout = re.findall(r'Check-Out\s(\d{2}:\d{2})', pairing)
-            checkout = datetime.strptime(checkout[0],"%H:%M")
-            checkouts = list()
-            for date in mdy:
-                date = date + timedelta(days = n_days - 1)
-                checkout_datetime = datetime.combine(date.date(), checkout.time())
-                checkouts.append(checkout_datetime)
+        ## Further, we want check in and checkout times to be associated with these dates.
 
-            ## Now all that remains is to make our table_data with all pairings. But because we want to filter by dates, we actually make an observation for each date a pairing is offered as well.
+        checkin = re.findall(r'Check-In\s(\d{2}:\d{2})', pairing)
+        checkin = datetime.strptime(checkin[0], "%H:%M")
+        checkins = []
+        for checkin_date in mdy:
+            checkin_datetime = datetime.combine(checkin_date.date(), checkin.time())
+            checkins.append(checkin_datetime)
 
-            checkinouts = []
-            for item1, item2 in zip(checkins, checkouts):
-                checkinouts.append((item1, item2))
-            
-            table_data = pd.DataFrame(columns=table_columns)
+        checkout = re.findall(r'Check-Out\s(\d{2}:\d{2})', pairing)
+        checkout = datetime.strptime(checkout[0], "%H:%M")
+        checkouts = []
+        for checkout_date in mdy:
+            checkout_datetime = datetime.combine(checkout_date.date(), checkout.time()) + timedelta(days=n_days - 1)
+            checkouts.append(checkout_datetime)
 
-            for checkinout in checkinouts:
-                checkin, checkout = checkinout
-                obs = pd.DataFrame([[p_code, n_days, checkin, checkout, credit_sum, block_sum, softtime, tafb, flight_data]], columns = table_columns)
-                table_data = pd.concat([table_data, obs], ignore_index=True)
+        ## Now all that remains is to make our table_data with all pairings. But because we want to filter by dates, we actually make an observation for each date a pairing is offered as well.
 
-        table_data['flight_data'] = table_data['flight_data'].astype(str)        
+        checkinouts = []
+        for item1, item2 in zip(checkins, checkouts):
+            checkinouts.append((item1, item2))
 
+        for checkinout in checkinouts:
+            checkin, checkout = checkinout
+            obs = pd.DataFrame([[p_code, n_days, checkin, checkout, credit_sum, block_sum, softtime, tafb, flight_data]], columns = table_columns)
+            table_data = pd.concat([table_data, obs], ignore_index=True)
 
-        return html.Div([
-            html.H5(f"Uploaded File: {filename}"),
-            #html.H6("File Content:"),
-            #html.Pre(decoded_content[:200] + "...")
-        ])
-
-@app.callback(
-    Output('datatable', 'data'),
-    Input('my-date-picker-range', 'start_date'),
-    Input('my-date-picker-range', 'end_date')
-)
-def update_table(start_date, end_date):
-    if start_date is not None and end_date is not None:
-        start_date_object = datetime.strptime(start_date, '%Y-%m-%d')
-        end_date_object = datetime.strptime(end_date, '%Y-%m-%d')
+        table_data['flight_data'] = table_data['flight_data'].astype(str)
 
         table_data['checkin'] = pd.to_datetime(table_data['checkin'])
         table_data['checkout'] = pd.to_datetime(table_data['checkout'])
 
-        filtered_data = table_data[
-            (table_data['checkin'].dt.date >= start_date_object.date()) &
-            (table_data['checkout'].dt.date <= end_date_object.date())
-        ]
+    data_table = dash_table.DataTable(
+            id='datatable',
+            columns=[{"name": col, "id": col} for col in table_data.columns[[0] + list(range(2, 5))]],
+            data=table_data.to_dict('records'),
+            sort_action='native',
+            sort_mode='multi',
+        )
 
-        filtered_data['checkin'] = filtered_data['checkin'].dt.strftime('%m-%d-%Y, %H:%M')
-        filtered_data['checkout'] = filtered_data['checkout'].dt.strftime('%m-%d-%Y, %H:%M')
-        
-        return filtered_data.to_dict('records')
-    
-    table_data['checkin'] = pd.to_datetime(table_data['checkin'])
-    table_data['checkout'] = pd.to_datetime(table_data['checkout'])
+    output_message = f'{filename} successfully processed. Pairings found: {len(pairings)}'
 
-    table_data['checkin'] = table_data['checkin'].dt.strftime('%m-%d-%Y, %H:%M')
-    table_data['checkout'] = table_data['checkout'].dt.strftime('%m-%d-%Y, %H:%M')
-
-    return table_data.to_dict('records')
-
-@app.callback(
-    Output('selected_row_store', 'data'),
-    Output('selected_row_table', 'children'),
-    Input('datatable', 'active_cell'),
-    Input('datatable', 'data'),
-    State('datatable', 'derived_virtual_indices')
-)
-def update_selected_row(active_cell, data, derived_virtual_indices):
-    selected_row_index = active_cell['row'] if active_cell else None
-    selected_row_table = None
-
-    if selected_row_index is not None:
-        if derived_virtual_indices and selected_row_index >= len(derived_virtual_indices):
-            selected_row_index = None
-
-        if selected_row_index is not None:
-            if derived_virtual_indices:
-                selected_row_index = derived_virtual_indices[selected_row_index]
-            else:
-                selected_row_index = None
-
-            if selected_row_index is not None:
-                selected_p_code = data[selected_row_index]['p_code']
-                selected_data = table_data[table_data['p_code'] == selected_p_code]
-
-                if not selected_data.empty:
-                    selected_table = selected_data.iloc[0]['flight_data']
-                    selected_df = pd.DataFrame(eval(selected_table), columns=flight_columns)
-                    selected_row_table = dash_table.DataTable(
-                        columns=[{"name": col, "id": col} for col in flight_columns],
-                        data=selected_df.to_dict('records'),
-                        style_table={'overflowX': 'auto'}
-                    )
-
-    return selected_row_index, selected_row_table
-
+    return output_message, data_table
 
 if __name__ == '__main__':
     app.run_server(debug=True)
