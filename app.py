@@ -4,12 +4,11 @@ import re
 import pandas as pd
 from datetime import datetime, timedelta
 import base64
-import json
 
-table_columns = ['p_code', 'n_days', 'checkin', 'checkout', 'credit_sum', 'block_sum', 'softtime','tafb','flight_data']
-#table_data = pd.DataFrame(columns=table_columns)
+table_columns = ['p_code', 'checkin', 'checkout', 'credit_sum', 'n_days', 'block_sum', 'softtime','tafb','flight_data']
+display_columns = ['Code','Check-In','Check-out','Credit','Days','Block','Soft','TAFB','Flight Data']
 
-flight_columns = ['Day', 'Flt', 'Dep', 'Local_Dep', 'Arr', 'Local_Arr', 'Turn', 'Eqp', 'Block']
+flight_columns = ['Day', 'Flt', 'Dep', 'D.Local', 'Arr', 'A.Local', 'Turn', 'Eqp', 'Block']
 
 def format_timedelta(td):
     total_hours = td.total_seconds() // 3600
@@ -22,8 +21,6 @@ def format_timedelta_alt(td):
     hours = td.seconds // 3600
     minutes = (td.seconds // 60) % 60
     return f"{days} days, {hours:02d}:{minutes:02d}"
-
-#exec(open("predata.py").read())
 
 # Create the Dash app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.LITERA])
@@ -38,103 +35,132 @@ app.layout = dbc.Container(
     children=[
         dbc.Row(
             [
+                html.H1("Pairings Parser"),
+                dcc.Store(id='selected_row_store'),
+                dcc.Markdown(
+                            '''
+                            This web app is designed to provide an interactive interface for exploring pairing data. Pairings are displayed on the left and can be filtered and sorted. Full details appear on the right when you click on a row.
+                            Feel free to get started with the preloaded data, or upload your own.
+                            '''
+                        ),
+            ],
+            className='row',
+            style={'textAlign':'center'}
+        ),
+        dbc.Row(
+            [
                 dbc.Col(
                     [
-                        html.H1("Title"),
-                        html.P("Instructions"),
-                        dcc.Store(id='selected_row_store'),
-                        dcc.DatePickerRange(
-                            id='my-date-picker-range',
-                            clearable=True,
-                            minimum_nights=0,
-                            start_date_placeholder_text="Start Date",
-                            end_date_placeholder_text="End Date"
-                        ),
-                        html.Div(id='output-container-date-picker-range'),
-                        html.Div([
-                            dcc.Upload(
+                        dcc.Upload(
                                 id='upload-data',
                                 children=html.Div([
                                     'Drag and Drop or ',
                                     html.A('Select Files')
                                 ]),
-                                multiple=False  # Set to True if you want to allow multiple file uploads
+                                style={
+                                    'width': '95%',
+                                    'height': '60px',
+                                    'lineHeight': '60px',
+                                    'borderWidth': '1px',
+                                    'borderStyle': 'dashed',
+                                    'borderRadius': '5px',
+                                    'textAlign': 'center',
+                                    'margin': '10px'
+                                },
+                                multiple=False
                             ),
-                            html.Div(id='output-data-upload')
-                        ])
+                        html.Div(
+                                id='output-data-upload',
+                                style={
+                                    'margin': '10px'
+                                    }
+                            ),
+                        html.Div(
+                            [
+                                "Select date range: ",
+                                dcc.DatePickerRange(
+                                    id='my-date-picker-range',
+                                    clearable=True,
+                                    minimum_nights=0,
+                                    start_date_placeholder_text="Start Date",
+                                    end_date_placeholder_text="End Date"
+                                ),
+                            ],
+                            style={'margin':'10px'}
+                        ),
+                        html.Div(
+                            [
+                                "Select number of days:",
+                                dcc.RangeSlider(
+                                        id='range-slider',
+                                        value=[1, 5],
+                                        step=1,
+                                        marks={i: str(i) for i in range(1,6)},
+                                        allowCross=False,
+                                        updatemode='drag'
+                                    ),
+                            ],
+                            style={'margin':'10px'}
+                        ),
+                        html.Div(
+                            id='output-data-table',
+                            children=dash_table.DataTable(
+                                id='datatable',
+                                columns=[{"name": col, "id": col_id} for col, col_id in zip(display_columns[0:4],table_columns[0:4])],
+                                data=[],
+                                sort_action='native',
+                                sort_mode='multi',
+                                style_data_conditional=[]
+                                )
+                            )
                     ],
-                    className='col-md-8'
+                    className='col-md-5'
                 ),
                 dbc.Col(
                     [
-                        html.H2("Header"),
+                        html.Div(
+                            [
+
+                            ],
+                            id='selected_row_info'
+                        ),
                     ],
-                    className='col-md-4'
+                    className='col-md-7'
                 ),
             ],
             className='row',
         ),
         dbc.Row(
             [
-                dbc.Col(
-                    [
-                        html.Div(
-                            id='output-data-table'
-                        )
-                        #dcc.Store(id='data-store'),
-                    ],
-                    className='col-md-8'
-                ),
-                dbc.Col(
-                    [
-                        html.Div(
+                html.Div(
                             [
-                                html.H3("Flight Table"),
+                                dcc.Markdown(
+                                    '''
+                                    This project is licensed under the [MIT License](https://github.com/ryan-j-pratt/pairings-parser/blob/e78d2ed42db588364a3d217577d76127e3706b58/LICENSE), which allows for open-source collaboration and modification of the codebase.
+
+                                    For more information about this project you can visit the [GitHub repository](https://github.com/ryan-j-pratt/pairings-parser/tree/main).
+                                    '''
+                                ),
                             ],
-                            id='selected_row_table'
+                            className='about-section',
+                            style={'margin':'10px'}
                         ),
-                    ],
-                    className='col-md-4'
-                ),
             ],
             className='row',
-        ),
-        dbc.Row(
-            [
-                dbc.Col(
-                    [
-                        html.Div(
-                            [
-                                html.H3("About Information"),
-                            ],
-                            className='about-section'
-                        ),
-                    ],
-                    className='col-md-8'
-                ),
-                dbc.Col(
-                    [
-                        html.Div(
-                            [
-                                html.H3("Other Information"),
-                            ],
-                            className='about-section'
-                        ),
-                    ],
-                    className='col-md-4'
-                ),
-            ],
-            className='row',
+            style={'textAlign':'center'}
         ),
     ],
 )
 
 @app.callback(
-    [Output('output-data-upload', 'children'), Output('output-data-table', 'children')],
+    [Output('output-data-upload', 'children'), 
+     Output('datatable', 'data')],
     [Input('upload-data', 'contents')],
+    [Input('my-date-picker-range', 'start_date'), Input('my-date-picker-range', 'end_date')],
+    [Input('range-slider', 'value')],
     [State('upload-data', 'filename')]
 )
-def process_uploaded_file(contents, filename):
+def process_uploaded_file(contents, start_date, end_date, range_values, filename):
     if contents is not None:
         # Read the file contents
         file_content = contents.encode("utf8").split(b";base64,")[1]
@@ -146,7 +172,7 @@ def process_uploaded_file(contents, filename):
         # Set a default value if no file is uploaded
         file_contents = '''
             ----------------------------------------------------------------------------------------------------
-            Z2071  Check-In 09:22   Check-Out 13:08            4-Day                     OCT 2022
+            Z2071  Check-In 09:22   Check-Out 13:08            4-Day                     JUN 2023
                                                                                         +---------------------+
             Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
             1     2176  EWR  07:12   HOU  11:14   001:00   32M   004:14                 |=====================|
@@ -164,6 +190,17 @@ def process_uploaded_file(contents, filename):
             TAFB: 083:28
             Crew Comp:  1 CA, 1 FO
             ----------------------------------------------------------------------------------------------------
+            Z2002  Check-In 08:30   Check-Out 16:45            1-Day                     JUN 2023
+                                                                                        +---------------------+
+            Day    Flt   Dep  Local   Arr  Local   Turn     Eqp   Block      Duty        | S  M  T  W  T  F  S |
+            1     1023  EWR  09:30   LAX  12:29   001:03   32M   002:59                 |=====================|
+            1     1024  LAX  13:30   EWR  16:24            32M   002:54                 |         -- -- -- -- |
+                                                                            008:15      |-- -- -- 07 -- 09 10 |
+                                                                ----------------------   |-- 12 -- 14 -- -- -- |
+            Credit: 006:05                                        006:05     008:15      |-- -- 20 -- -- -- -- |
+            TAFB: 008:15                                                                 |-- -- -- -- 29 --    |
+            Crew Comp:  1 CA, 1 FO                                                       +---------------------+
+            ----------------------------------------------------------------------------------------------------
             END
             '''
 
@@ -175,7 +212,6 @@ def process_uploaded_file(contents, filename):
     table_data = pd.DataFrame(columns=table_columns)
 
     for pairing in pairings:
-        #global table_data
 
         flight_data = []
         obs = pd.DataFrame(columns=table_columns)
@@ -235,10 +271,8 @@ def process_uploaded_file(contents, filename):
 
         d = list()
         d_list = re.findall(r'\|(\d{2})\s|\s(\d{2})\s', pairing)
-        print(d_list)
 
         d = [int(num) for tup in d_list for num in tup if num]
-        print(d)
         mdy = [my + timedelta(days=item-1) for item in d]
 
         ## Further, we want check in and checkout times to be associated with these dates.
@@ -265,25 +299,87 @@ def process_uploaded_file(contents, filename):
 
         for checkinout in checkinouts:
             checkin, checkout = checkinout
-            obs = pd.DataFrame([[p_code, n_days, checkin, checkout, credit_sum, block_sum, softtime, tafb, flight_data]], columns = table_columns)
+            obs = pd.DataFrame([[p_code, checkin, checkout, credit_sum, n_days, block_sum, softtime, tafb, flight_data]], columns = table_columns)
             table_data = pd.concat([table_data, obs], ignore_index=True)
 
         table_data['flight_data'] = table_data['flight_data'].astype(str)
 
-        table_data['checkin'] = pd.to_datetime(table_data['checkin'])
-        table_data['checkout'] = pd.to_datetime(table_data['checkout'])
 
-    data_table = dash_table.DataTable(
-            id='datatable',
-            columns=[{"name": col, "id": col} for col in table_data.columns[[0] + list(range(2, 5))]],
-            data=table_data.to_dict('records'),
-            sort_action='native',
-            sort_mode='multi',
-        )
 
-    output_message = f'{filename} successfully processed. Pairings found: {len(pairings)}'
+    output_message = f'{filename} processed. Pairings found: {len(pairings)}'
 
-    return output_message, data_table
+    if range_values is not None:
+        filtered_data = table_data.loc[(table_data['n_days'] >= range_values[0]) & (table_data['n_days'] <= range_values[1])]
+    else:
+        filtered_data = table_data.copy()  # Create a copy of the original table_data
+
+    if start_date is not None and end_date is not None:
+        start_date_object = datetime.strptime(start_date, '%Y-%m-%d')
+        end_date_object = datetime.strptime(end_date, '%Y-%m-%d')
+
+        filtered_data['checkin'] = pd.to_datetime(filtered_data['checkin'])
+        filtered_data['checkout'] = pd.to_datetime(filtered_data['checkout'])
+
+        filtered_data = filtered_data[
+            (filtered_data['checkin'].dt.date >= start_date_object.date()) &
+            (filtered_data['checkout'].dt.date <= end_date_object.date())
+        ]
+
+    filtered_data.loc[:, 'checkin'] = filtered_data['checkin'].dt.strftime('%m/%d, %H:%M')
+    filtered_data.loc[:, 'checkout'] = filtered_data['checkout'].dt.strftime('%m/%d, %H:%M')
+
+
+    return output_message, filtered_data.to_dict('records')
+
+@app.callback(
+    Output('selected_row_store', 'data'),
+    Output('selected_row_info', 'children'),
+    Input('datatable', 'active_cell'),
+    Input('datatable', 'data'),
+    State('datatable', 'derived_virtual_indices')
+)
+def update_selected_row(active_cell, table_data, derived_virtual_indices):
+    table_data = pd.DataFrame(table_data)
+    selected_row_index = active_cell['row'] if active_cell else None
+    selected_row_info = None
+
+    if selected_row_index is not None:
+        if derived_virtual_indices and selected_row_index >= len(derived_virtual_indices):
+            selected_row_index = None
+
+        if selected_row_index is not None:
+            if derived_virtual_indices:
+                selected_row_index = derived_virtual_indices[selected_row_index]
+            else:
+                selected_row_index = None
+
+            if selected_row_index is not None:
+                selected_data = table_data.iloc[selected_row_index]
+
+                selected_checkin = selected_data['checkin']
+                selected_checkout = selected_data['checkout']
+                selected_tafb = selected_data['tafb']
+                selected_credit = selected_data['credit_sum']
+                selected_block = selected_data['block_sum']
+                selected_soft = selected_data['softtime']
+
+                selected_atts = f"Check-In: {selected_checkin} \u2014 Check-Out: {selected_checkout}\nTAFB: {selected_tafb}\nCredit: {selected_credit} - Block: {selected_block} = Soft: {selected_soft}"
+
+                selected_table = selected_data['flight_data']
+                selected_df = pd.DataFrame(eval(selected_table), columns=flight_columns)
+                selected_row_table = dash_table.DataTable(
+                    columns=[{"name": col, "id": col} for col in flight_columns],
+                    data=selected_df.to_dict('records'),
+                    style_table={'overflowX': 'auto'}
+                )
+                selected_row_info = [
+                    html.H4('Pairing Info'),
+                    html.Div(selected_atts, style={'white-space': 'pre-wrap'}),
+                    html.H5('Flight Table'),
+                    selected_row_table,
+                ]
+
+    return selected_row_index, selected_row_info
 
 if __name__ == '__main__':
     app.run_server(debug=True)
