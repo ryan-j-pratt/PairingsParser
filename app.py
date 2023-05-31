@@ -31,7 +31,11 @@ server = app.server
 import dash_bootstrap_components as dbc
 from flask_caching import Cache
 
-cache = Cache(app.server, config={'CACHE_TYPE': 'simple'})
+cache = Cache(app.server, config={
+    'CACHE_TYPE': 'filesystem',
+    'CACHE_DIR': '/tmp/flask_cache',
+    'CACHE_DEFAULT_TIMEOUT': 3600  # 1 hour
+})
 
 app.layout = dbc.Container(
     fluid=True,
