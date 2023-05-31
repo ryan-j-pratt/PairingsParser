@@ -54,6 +54,7 @@ app.layout = dbc.Container(
             [
                 dbc.Col(
                     [
+                        dcc.Store(id='upload-data-store'),
                         dcc.Upload(
                                 id='upload-data',
                                 children=html.Div([
@@ -151,15 +152,8 @@ app.layout = dbc.Container(
     ],
 )
 
-@app.callback(
-    [Output('output-data-upload', 'children'), 
-     Output('datatable', 'data')],
-    [Input('upload-data', 'contents')],
-    [Input('my-date-picker-range', 'start_date'), Input('my-date-picker-range', 'end_date')],
-    [Input('range-slider', 'value')],
-    [State('upload-data', 'filename')]
-)
-def process_uploaded_file(contents, start_date, end_date, range_values, filename):
+@app.callback([Output('upload-data-store','data'), Output('output-data-upload','children')], [Input('upload-data','contents')], [State('upload-data', 'filename')])
+def process_uploaded_file(contents, filename):
     if contents is not None:
         # Read the file contents
         file_content = contents.encode("utf8").split(b";base64,")[1]
@@ -167,7 +161,109 @@ def process_uploaded_file(contents, start_date, end_date, range_values, filename
         
         # Remove line breaks and create a continuous string
         file_contents = decoded_content.replace("\n", "")
-    else:
+        
+        pairings = file_contents.split('----------------------------------------------------------------------------------------------------')
+        del pairings[0]
+        del pairings[-1]
+
+        table_data = pd.DataFrame(columns=table_columns)
+
+        for pairing in pairings:
+
+            flight_data = []
+            obs = pd.DataFrame(columns=table_columns)
+            p_code = ""
+            n_days = 0
+            credit_sum = timedelta()
+            block_sum = timedelta()
+            softtime = timedelta()
+            tafb = timedelta()
+            my = datetime.now()  # Or an appropriate default value
+            d = []
+            checkins = []
+            checkouts = []   
+            
+            flight_data = re.findall(r'(\d)?(?:\s+|\s+[A-Z]{2}\s+)(\w+)\s+(\w{3})\s+(\d{2}:\d{2})\s+(\w{3})\s+(\d{2}:\d{2})\s*(\d{3}:\d{2})?\s*(\w*)?\s+(\d{3}:\d{2})', pairing)
+
+            # Extract other variables of interest
+
+            ## From the top line pull the pairing code and the number of days of the pairing
+
+            p_code = re.findall(r'J\d{1,2}[A-Z]?\d{2}', pairing)
+            p_code = p_code[0]
+
+            n_days = re.findall(r'(\d+)-Day', pairing)
+            n_days = int(n_days[0])
+
+            ## Near the bottom pull both the total credit and sum of the block times and use it to calculate the soft time. Plus record time away from base
+
+            credit_sum = re.findall(r'Credit:\s(\d{3}:\d{2})', pairing)
+            credit_sum = credit_sum[0]
+            hours, minutes = map(int, credit_sum.split(':'))
+            credit_sum = timedelta(hours=hours, minutes=minutes)
+
+            block_sum = re.findall(r'\w\s{40}(\d{3}:\d{2})', pairing)
+            block_sum = block_sum[0]
+            hours, minutes = map(int, block_sum.split(':'))
+            block_sum = timedelta(hours=hours, minutes=minutes)
+
+            softtime = credit_sum - block_sum
+
+            tafb = re.findall(r'TAFB:\s(\d{3}:\d{2})', pairing)
+            tafb = tafb[0]
+            hours, minutes = map(int, tafb.split(':'))
+            tafb = timedelta(hours=hours, minutes=minutes)
+
+            credit_sum = format_timedelta(credit_sum)
+            block_sum = format_timedelta(block_sum)
+            softtime = format_timedelta(softtime)
+            tafb = format_timedelta_alt(tafb)
+
+            ## Here, we concern ourselves with dates. We want the dates in the calendar on the right to match with the month and year above the calendar.
+
+            my = re.findall(r'[A-Z]{3}\s\d{4}', pairing)
+            my = datetime.strptime(my[0],"%b %Y")
+
+            d = list()
+            d_list = re.findall(r'\|(\d{2})\s|\s(\d{2})\s', pairing)
+
+            d = [int(num) for tup in d_list for num in tup if num]
+            mdy = [my + timedelta(days=item-1) for item in d]
+
+            ## Further, we want check in and checkout times to be associated with these dates.
+
+            checkin = re.findall(r'Check-In\s(\d{2}:\d{2})', pairing)
+            checkin = datetime.strptime(checkin[0], "%H:%M")
+            checkins = []
+            for checkin_date in mdy:
+                checkin_datetime = datetime.combine(checkin_date.date(), checkin.time())
+                checkins.append(checkin_datetime)
+
+            checkout = re.findall(r'Check-Out\s(\d{2}:\d{2})', pairing)
+            checkout = datetime.strptime(checkout[0], "%H:%M")
+            checkouts = []
+            for checkout_date in mdy:
+                checkout_datetime = datetime.combine(checkout_date.date(), checkout.time()) + timedelta(days=n_days - 1)
+                checkouts.append(checkout_datetime)
+
+            ## Now all that remains is to make our table_data with all pairings. But because we want to filter by dates, we actually make an observation for each date a pairing is offered as well.
+
+            checkinouts = []
+            for item1, item2 in zip(checkins, checkouts):
+                checkinouts.append((item1, item2))
+
+            for checkinout in checkinouts:
+                checkin, checkout = checkinout
+                obs = pd.DataFrame([[p_code, checkin, checkout, credit_sum, n_days, block_sum, softtime, tafb, flight_data]], columns = table_columns)
+                table_data = pd.concat([table_data, obs], ignore_index=True)
+
+            table_data['flight_data'] = table_data['flight_data'].astype(str)
+            data_list = table_data.to_dict(orient='records')
+            output_message = f'{filename} processed successfully. {len(pairings)} found.'
+
+            return data_list, output_message
+
+    else: 
         # Set a default value if no file is uploaded
         # Read the JSON file
         with open('default_data.json', 'r') as file:
@@ -177,14 +273,38 @@ def process_uploaded_file(contents, start_date, end_date, range_values, filename
         data_list = json.loads(serialized_data)
 
         # Convert millisecond timestamps to datetime objects
-        for data in data_list:
-            data['checkin'] = pd.to_datetime(data['checkin'], unit='ms')
-            data['checkout'] = pd.to_datetime(data['checkout'], unit='ms')
+        #for data in data_list:
+        #    data['checkin'] = pd.to_datetime(data['checkin'], unit='ms')
+        #    data['checkout'] = pd.to_datetime(data['checkout'], unit='ms')
 
         # Create a dataframe from the data
         table_data = pd.DataFrame(data_list)
+        data_list = table_data.to_dict(orient='records')
 
-        output_message = 'Default data used'
+        output_message = 'Default data used.'
+
+        return data_list, output_message
+
+@app.callback(
+    Output('datatable', 'data'),
+    Input('upload-data-store', 'data'),
+    Input('my-date-picker-range', 'start_date'), Input('my-date-picker-range', 'end_date'),
+    Input('range-slider', 'value')
+)
+def filter_table(data_list, start_date, end_date, range_values):
+    # Create a dataframe from the data
+    table_data = pd.DataFrame(data_list)
+    #with open(data_json, 'r') as file:
+    #    serialized_data = file.read()
+
+    # Deserialize the JSON data
+    #data_list = json.loads(data_list)
+
+    # Convert millisecond timestamps to datetime objects
+    table_data['checkin'] = pd.to_datetime(table_data['checkin'], unit='ms')
+    table_data['checkout'] = pd.to_datetime(table_data['checkout'], unit='ms')
+
+
 
     if range_values is not None:
         filtered_data = table_data.loc[(table_data['n_days'] >= range_values[0]) & (table_data['n_days'] <= range_values[1])]
@@ -207,7 +327,7 @@ def process_uploaded_file(contents, start_date, end_date, range_values, filename
     filtered_data.loc[:, 'checkout'] = filtered_data['checkout'].dt.strftime('%m/%d, %H:%M')
 
 
-    return output_message, filtered_data.to_dict('records')
+    return filtered_data.to_dict('records')
 
 @app.callback(
     Output('selected_row_store', 'data'),

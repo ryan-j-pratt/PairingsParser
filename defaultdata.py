@@ -49,14 +49,13 @@ for pairing in pairings:
     checkins = []
     checkouts = []   
     
-    flight_data = re.findall(r'(\d)?\s+(\d+)\s+(\w{3})\s{2}(\d{2}:\d{2})\s{3}(\w{3})\s{2}(\d{2}:\d{2})\s*(\d{3}:\d{2})?\s*(\w{3})\s{3}(\d{3}:\d{2})', pairing) # raw data is a simple dataset stored in confidential.py
-    flight_table = pd.DataFrame(flight_data, columns=flight_columns)
+    flight_data = re.findall(r'(\d)?(?:\s+|\s+[A-Z]{2}\s+)(\w+)\s+(\w{3})\s+(\d{2}:\d{2})\s+(\w{3})\s+(\d{2}:\d{2})\s*(\d{3}:\d{2})?\s*(\w*)?\s+(\d{3}:\d{2})', pairing)
 
     # Extract other variables of interest
 
     ## From the top line pull the pairing code and the number of days of the pairing
 
-    p_code = re.findall(r'[A-Z]\d+', pairing)
+    p_code = re.findall(r'J\d{1,2}[A-Z]?\d{2}', pairing)
     p_code = p_code[0]
 
     n_days = re.findall(r'(\d+)-Day', pairing)
