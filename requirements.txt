@@ -1,5 +1,5 @@
 dash==2.7.0
 dash_bootstrap_components==1.4.1
-flask_caching==2.0.2
+flask_caching==2.02
 pandas
 gunicorn
