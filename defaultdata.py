@@ -1,16 +1,16 @@
-from dash import dash, html, dcc, dash_table, Input, Output, State
-import dash_bootstrap_components as dbc
+###
+### This file pre-processes some default data set that can then be loaded into the main app.
+###
+
 import re
 import pandas as pd
 from datetime import datetime, timedelta
-import base64
-import json
 
 # Open the file in read mode
-with open('JUN23_JFK_320_PILOTS.txt', 'r') as file:
+with open('JUN23_JFK_320_PILOTS.txt', 'r') as file: # This file is not publicly available. It can be substituted for a similar one.
     file_contents = file.read()
 
-table_columns = ['p_code', 'checkin', 'checkout', 'credit_sum', 'n_days', 'block_sum', 'softtime','tafb','flight_data']
+table_columns = ['p_code', 'checkin', 'checkout', 'credit_sum', 'softtime', 'n_days', 'block_sum','tafb','flight_data']
 display_columns = ['Code','Check-In','Check-out','Credit','Days','Block','Soft','TAFB','Flight Data']
 
 flight_columns = ['Day', 'Flt', 'Dep', 'D.Local', 'Arr', 'A.Local', 'Turn', 'Eqp', 'Block']
@@ -120,7 +120,7 @@ for pairing in pairings:
 
     for checkinout in checkinouts:
         checkin, checkout = checkinout
-        obs = pd.DataFrame([[p_code, checkin, checkout, credit_sum, n_days, block_sum, softtime, tafb, flight_data]], columns = table_columns)
+        obs = pd.DataFrame([[p_code, checkin, checkout, credit_sum, softtime, n_days, block_sum, tafb, flight_data]], columns = table_columns)
         table_data = pd.concat([table_data, obs], ignore_index=True)
 
     table_data['flight_data'] = table_data['flight_data'].astype(str)

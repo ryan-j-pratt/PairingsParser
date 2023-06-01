@@ -6,8 +6,8 @@ from datetime import datetime, timedelta
 import base64
 import json
 
-table_columns = ['p_code', 'checkin', 'checkout', 'credit_sum', 'n_days', 'block_sum', 'softtime','tafb','flight_data']
-display_columns = ['Code','Check-In','Check-out','Credit','Days','Block','Soft','TAFB','Flight Data']
+table_columns = ['p_code', 'checkin', 'checkout', 'credit_sum', 'softtime', 'n_days', 'block_sum','tafb','flight_data']
+display_columns = ['Code','Check-In','Check-out','Credit','Soft','Days','Block','TAFB','Flight Data']
 
 flight_columns = ['Day', 'Flt', 'Dep', 'D.Local', 'Arr', 'A.Local', 'Turn', 'Eqp', 'Block']
 
@@ -110,7 +110,7 @@ app.layout = dbc.Container(
                             id='output-data-table',
                             children=dash_table.DataTable(
                                 id='datatable',
-                                columns=[{"name": col, "id": col_id} for col, col_id in zip(display_columns[0:4],table_columns[0:4])],
+                                columns=[{"name": col, "id": col_id} for col, col_id in zip(display_columns[0:5],table_columns[0:5])],
                                 data=[],
                                 sort_action='native',
                                 sort_mode='multi',
@@ -178,7 +178,7 @@ def process_uploaded_file(contents, filename):
             block_sum = timedelta()
             softtime = timedelta()
             tafb = timedelta()
-            my = datetime.now()  # Or an appropriate default value
+            my = datetime.now()
             d = []
             checkins = []
             checkouts = []   
@@ -189,7 +189,7 @@ def process_uploaded_file(contents, filename):
 
             ## From the top line pull the pairing code and the number of days of the pairing
 
-            p_code = re.findall(r'J\d{1,2}[A-Z]?\d{2}', pairing)
+            p_code = re.findall(r'\w\d{1,2}[A-Z]?\d{2}', pairing)
             p_code = p_code[0]
 
             n_days = re.findall(r'(\d+)-Day', pairing)
@@ -254,14 +254,14 @@ def process_uploaded_file(contents, filename):
 
             for checkinout in checkinouts:
                 checkin, checkout = checkinout
-                obs = pd.DataFrame([[p_code, checkin, checkout, credit_sum, n_days, block_sum, softtime, tafb, flight_data]], columns = table_columns)
+                obs = pd.DataFrame([[p_code, checkin, checkout, credit_sum, softtime, n_days, block_sum, tafb, flight_data]], columns = table_columns)
                 table_data = pd.concat([table_data, obs], ignore_index=True)
 
             table_data['flight_data'] = table_data['flight_data'].astype(str)
             data_list = table_data.to_dict(orient='records')
             output_message = f'{filename} processed successfully. {len(pairings)} found.'
 
-            return data_list, output_message
+        return data_list, output_message
 
     else: 
         # Set a default value if no file is uploaded
@@ -272,13 +272,10 @@ def process_uploaded_file(contents, filename):
         # Deserialize the JSON data
         data_list = json.loads(serialized_data)
 
-        # Convert millisecond timestamps to datetime objects
-        #for data in data_list:
-        #    data['checkin'] = pd.to_datetime(data['checkin'], unit='ms')
-        #    data['checkout'] = pd.to_datetime(data['checkout'], unit='ms')
-
         # Create a dataframe from the data
         table_data = pd.DataFrame(data_list)
+        table_data['checkin'] = pd.to_datetime(table_data['checkin'], unit='ms')
+        table_data['checkout'] = pd.to_datetime(table_data['checkout'], unit='ms')
         data_list = table_data.to_dict(orient='records')
 
         output_message = 'Default data used.'
@@ -294,15 +291,11 @@ def process_uploaded_file(contents, filename):
 def filter_table(data_list, start_date, end_date, range_values):
     # Create a dataframe from the data
     table_data = pd.DataFrame(data_list)
-    #with open(data_json, 'r') as file:
-    #    serialized_data = file.read()
 
-    # Deserialize the JSON data
-    #data_list = json.loads(data_list)
 
     # Convert millisecond timestamps to datetime objects
-    table_data['checkin'] = pd.to_datetime(table_data['checkin'], unit='ms')
-    table_data['checkout'] = pd.to_datetime(table_data['checkout'], unit='ms')
+    table_data['checkin'] = pd.to_datetime(table_data['checkin'])
+    table_data['checkout'] = pd.to_datetime(table_data['checkout'])
 
 
 
